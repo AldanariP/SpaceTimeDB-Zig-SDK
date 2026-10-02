@@ -1,4 +1,6 @@
-pub const Error = error{
+const std = @import("std");
+
+pub const HostError = error{
     HOST_CALL_FAILURE,
     NOT_IN_TRANSACTION,
     BSATN_DECODE_ERROR,
@@ -22,7 +24,7 @@ pub const Error = error{
     HTTP_ERROR,
 };
 
-pub fn err_from_no(no: u16) !Error {
+fn errFromReturnCode(no: u16) ?HostError {
     return switch (no) {
         1  => .HOST_CALL_FAILURE,
         2  => .NOT_IN_TRANSACTION,
@@ -45,6 +47,33 @@ pub fn err_from_no(no: u16) !Error {
         19 => .TRANSACTION_IS_READ_ONLY,
         20 => .TRANSACTION_IS_MUT,
         21 => .HTTP_ERROR,
-        else => error.UnkownError
+        else => null
     };
+}
+
+/// This function returns an error based on the
+pub fn checkErr(
+    comptime AllowedErrors: type,
+    rc: u16
+) (AllowedErrors || error{ HOST_CALL_FAILURE, UnexpectedError, UnknownError })!void {
+    if (rc == 0) return;
+    if (rc == 1) return error.HOST_CALL_FAILURE;
+
+    const master_err = errFromReturnCode(rc) orelse return error.UnknownError;
+
+    switch (master_err) {
+        inline else => |err| {
+            const is_allowed = blk: {
+                const error_set = @typeInfo(AllowedErrors).ErrorSet orelse @compileError("Must be an error set");
+                for (error_set) |allowed_field| {
+                    if (std.mem.eql(u8, allowed_field.name, @errorName(err))) {
+                        break :blk true;
+                    }
+                }
+                break :blk false;
+            };
+
+            return if (is_allowed) @errorCast(err) else error.UnexpectedError;
+        }
+    }
 }
