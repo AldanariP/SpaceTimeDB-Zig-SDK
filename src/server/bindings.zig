@@ -130,10 +130,8 @@ pub inline fn bytesSinkWrite(sink_id: u32, buffer: []const u8) SinkError!u32 {
     return written;
 }
 
-pub inline fn bytesSourceRead(
-    source_id: u32,
-    buffer: []u8
-) (BytesError || error{BYTES_SOURCE_EXHAUSTED})!void {
+pub const SourceError = BytesError || error{BYTES_SOURCE_EXHAUSTED};
+pub inline fn bytesSourceRead(source_id: u32, buffer: []u8) SourceError!void {
     const rc = c.bytes_source_read(source_id, buffer.ptr, &buffer.len);
     if (rc < 0) return error.BYTES_SOURCE_EXHAUSTED;
     try errors.checkErr(BytesError, @intCast(rc));

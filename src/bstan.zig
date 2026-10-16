@@ -7,11 +7,13 @@ fn writeSlice(w: *std.Io.Writer, slice: []const u8, len_in: ?u32) !void {
     try w.writeAll(slice);
 }
 
-const MAX_DEPTH = 10;
+const MAX_DEPTH = 10;  // TODO: make it an option
 
 pub fn serialize(w: *std.Io.Writer, value: anytype) !void {
     switch (@typeInfo(@TypeOf(value))) {
-        .bool, .int, .float, .@"enum", .pointer, .@"struct", .@"union", .array => try serializeInner(w, value, MAX_DEPTH),
+        .bool, .int, .float,
+        .@"enum", .pointer, .optional,
+        .@"struct", .@"union", .array => try serializeInner(w, value, MAX_DEPTH),
         else => return error.UnsupportedType,
     }
 }
@@ -34,6 +36,14 @@ fn serializeInner(w: *std.Io.Writer, value: anytype, depth: usize) !void {
                 unreachable;
             }
             return error.UnsupportedType;
+        },
+        .optional => {
+            if (value) |payload| {
+                try w.writeInt(u8, 0, .little);
+                try serializeInner(w, payload, depth - 1);
+            } else {
+                try w.writeInt(u8, 1, .little);
+            }
         },
         .@"enum" => try w.writeInt(u8, @intFromEnum(value), .little),
         .array => |info| switch (@typeInfo(info.child)) {
@@ -208,14 +218,14 @@ fn readSlice(T: type, r: *std.Io.Reader) ![]T {
 }
 
 pub fn deserialize(T: type, r: *std.Io.Reader) !T {
-    switch (@typeInfo(@TypeOf(T))) {
+    switch (@typeInfo(T)) {
         .bool, .int, .float, .@"enum", .pointer, .@"struct", .@"union", .array => try deserializeInner(T, r, MAX_DEPTH),
         else => return error.UnsupportedType,
     }
 }
 
 fn deserializeInner(T: type, r: *std.Io.Reader, depth: usize) !T {
-    return switch (@typeInfo(@TypeOf(T))) {
+    return switch (@typeInfo(T)) {
         .bool => switch (try r.takeByte()) {
             0x00 => false,
             0x01 => true,
